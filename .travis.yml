@@ -5,4 +5,5 @@ go:
 install:
         - go get -u github.com/labstack/echo/...
         - go get -u github.com/boltdb/bolt/...
-          #- make
+        - go get -u github.com/kisielk/errcheck
+        - go get -u github.com/golang/lint/golint
