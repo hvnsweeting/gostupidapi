@@ -3,5 +3,6 @@ language: go
 go:
       - 1.6
 install:
-        - bash deps.sh
-        - make
+        - go get -u github.com/labstack/echo/...
+        - go get -u github.com/boltdb/bolt/...
+          #- make
