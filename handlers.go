@@ -14,51 +14,56 @@ func init() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 }
 
+// Index handles XYZ
 func Index(c echo.Context) error {
 	return c.String(http.StatusOK, "Hello, World!")
 }
 
+// TaiLieuHocTap handles XYZ
 func TaiLieuHocTap(c echo.Context) error {
 	return c.String(http.StatusForbidden, "Forbidden")
 }
 
+// LoginHandler handles login process
 func LoginHandler(c echo.Context) error {
 	return c.JSON(http.StatusOK, c.QueryParams())
 }
 
-type MyData struct {
+type myData struct {
 	Password []string
 	User     []string `json:"user_name"`
 }
 
-type ReturnData struct {
+type returnData struct {
 	Password []string
 	User     []string
 }
 
-func JsonEndpoint(c echo.Context) error {
+// JSONEndpoint handles ...
+func JSONEndpoint(c echo.Context) error {
 	r := c.Request()
 
 	data, err := ioutil.ReadAll(r.Body())
 	log.Println(string(data))
-	var myData MyData
+	var mData myData
 	if err == nil && data != nil {
-		err = json.Unmarshal(data, &myData)
+		err = json.Unmarshal(data, &mData)
 		if err != nil {
 			log.Println("Marshalling: ", err)
 			return c.JSON(http.StatusBadRequest, "Bad JSON")
 		}
 	}
 
-	retData := ReturnData{User: myData.User, Password: myData.Password}
+	retData := returnData{User: mData.User, Password: mData.Password}
 	return c.JSON(http.StatusOK, retData)
 }
 
-func JsonIndustry(c echo.Context) error {
-	var myData MyData
-	err := c.Bind(myData)
+// JSONIndustry handles ...
+func JSONIndustry(c echo.Context) error {
+	var mData myData
+	err := c.Bind(mData)
 	if err != nil {
 		log.Println(err)
 	}
-	return c.JSON(http.StatusOK, myData)
+	return c.JSON(http.StatusOK, mData)
 }

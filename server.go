@@ -17,15 +17,17 @@ func init() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 }
 
+// A Entry presents a blacklist entry.
 type Entry struct {
 	IP      string
 	Comment string
 }
 
-type ReturnMessage struct {
+type returnMessage struct {
 	Message string
 }
 
+// AddIP adds and IP to blacklist
 func AddIP(c echo.Context) error {
 	var e Entry
 	err := c.Bind(&e)
@@ -37,13 +39,18 @@ func AddIP(c echo.Context) error {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
+	defer func() {
+		cErr := db.Close()
+		if cErr != nil {
+			log.Fatal(cErr)
+		}
+	}()
 
 	// add entry to database
 	err = db.Update(func(tx *bolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists([]byte("nambk"))
-		if err != nil {
-			return err
+		b, bkCreateErr := tx.CreateBucketIfNotExists([]byte("nambk"))
+		if bkCreateErr != nil {
+			return bkCreateErr
 		}
 		err = b.Put([]byte(e.Comment), []byte(e.IP))
 		return err
@@ -53,32 +60,38 @@ func AddIP(c echo.Context) error {
 		log.Print("DB update failed", err)
 	}
 
-	msg := ReturnMessage{"success"}
+	msg := returnMessage{"success"}
 
 	log.Println(msg)
 
 	return c.JSON(http.StatusCreated, msg)
 }
 
+// CheckBlacklistHandler checks if an IP in blacklist.
 func CheckBlacklistHandler(c echo.Context) error {
 	ipCheck := c.QueryParam("ip")
 	log.Println("INPUT: ", ipCheck)
 	if len(ipCheck) == 0 {
-		c.JSON(http.StatusBadRequest, ReturnMessage{"failed"})
+		return c.JSON(http.StatusBadRequest, returnMessage{"failed"})
 	}
 
 	db, err := bolt.Open("my.db", 0600, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
+	defer func() {
+		cErr := db.Close()
+		if cErr != nil {
+			log.Fatal(cErr)
+		}
+	}()
 
 	// add entry to database
 	found := false
 	err = db.Update(func(tx *bolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists([]byte("nambk"))
-		if err != nil {
-			return err
+		b, bkCreateErr := tx.CreateBucketIfNotExists([]byte("nambk"))
+		if bkCreateErr != nil {
+			return bkCreateErr
 		}
 		c := b.Cursor()
 
@@ -95,11 +108,11 @@ func CheckBlacklistHandler(c echo.Context) error {
 		log.Print("DB update failed", err)
 	}
 
-	var msg ReturnMessage
+	var msg returnMessage
 	if found {
-		msg = ReturnMessage{"found"}
+		msg = returnMessage{"found"}
 	} else {
-		msg = ReturnMessage{"not found"}
+		msg = returnMessage{"not found"}
 	}
 
 	log.Println(msg)
@@ -125,8 +138,8 @@ func main() {
 
 	e.GET("/tlht", TaiLieuHocTap)
 	e.POST("/login", LoginHandler)
-	e.POST("/hang", JsonEndpoint)
-	e.POST("/ind", JsonIndustry)
+	e.POST("/hang", JSONEndpoint)
+	e.POST("/ind", JSONIndustry)
 	e.SetDebug(true)
 
 	e.Run(standard.New(":1323"))
