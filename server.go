@@ -11,7 +11,10 @@ import (
 	"net/http"
 )
 
-var db bolt.DB
+var (
+	db bolt.DB
+	dbName = []byte("nambk")
+)
 
 func init() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
@@ -31,33 +34,16 @@ type returnMessage struct {
 func AddIP(c echo.Context) error {
 	var e Entry
 	err := c.Bind(&e)
+	// Input malformed
 	if err != nil {
-		log.Println("error", err)
+		return c.JSON(http.StatusBadRequest, returnMessage{Message: err.Error()})
 	}
-
-	db, err := bolt.Open("my.db", 0600, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func() {
-		cErr := db.Close()
-		if cErr != nil {
-			log.Fatal(cErr)
-		}
-	}()
 
 	// add entry to database
-	err = db.Update(func(tx *bolt.Tx) error {
-		b, bkCreateErr := tx.CreateBucketIfNotExists([]byte("nambk"))
-		if bkCreateErr != nil {
-			return bkCreateErr
-		}
-		err = b.Put([]byte(e.Comment), []byte(e.IP))
-		return err
-	})
-
-	if err != nil {
-		log.Print("DB update failed", err)
+	if err = db.Update(func(tx *bolt.Tx) error {
+		return b.Put([]byte(e.Comment), []byte(e.IP))
+	}); err != nil {
+		return c.JSON(http.StatusInternalServerError, returnMessage{Message: err.Error()})
 	}
 
 	msg := returnMessage{"success"}
@@ -72,40 +58,24 @@ func CheckBlacklistHandler(c echo.Context) error {
 	ipCheck := c.QueryParam("ip")
 	log.Println("INPUT: ", ipCheck)
 	if len(ipCheck) == 0 {
-		return c.JSON(http.StatusBadRequest, returnMessage{"failed"})
+		return c.JSON(http.StatusBadRequest, returnMessage{Message: "failed"})
 	}
-
-	db, err := bolt.Open("my.db", 0600, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func() {
-		cErr := db.Close()
-		if cErr != nil {
-			log.Fatal(cErr)
-		}
-	}()
-
 	// add entry to database
 	found := false
-	err = db.Update(func(tx *bolt.Tx) error {
-		b, bkCreateErr := tx.CreateBucketIfNotExists([]byte("nambk"))
-		if bkCreateErr != nil {
-			return bkCreateErr
-		}
-		c := b.Cursor()
-
+	// tt locks when call db.Update so multiple clients call check same time has to wait,
+	// switch to db.View.
+	err := db.View(func(tx *bolt.Tx) error {
+		c := tx.Bucket(dbName).Cursor()
 		for k, v := c.First(); k != nil; k, v = c.Next() {
 			if string(v) == ipCheck {
 				found = true
+				break
 			}
 		}
-
-		return err
+		return nil
 	})
-
 	if err != nil {
-		log.Print("DB update failed", err)
+		return c.JSON(http.StatusInternalServerError, returnMessage{Message: err.Error()})	
 	}
 
 	var msg returnMessage
@@ -117,19 +87,41 @@ func CheckBlacklistHandler(c echo.Context) error {
 
 	log.Println(msg)
 
-	return c.JSON(http.StatusCreated, msg)
+	return c.JSON(http.StatusCreated, returnMessage{Message: msg})
 
+}
+
+// Check and create db onetime only, when proram starts.
+func initDB() error {
+	return db.Update(func(tx *bolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists(dbName)
+		return err
+	}
 }
 
 func main() {
 
+	/* NOTE: This did not work because shorthand declaration is local to the closet syntatic block {..} 
+	* so var `db` here is different from global `db` 
 	//	db, err := bolt.Open("my.db", 0600, nil)
 	//	if err != nil {
 	//		log.Fatal(err)
 	//	}
-	//	defer db.Close()
-	//	log.Println(db.Info())
+	/* FIX: */
+	var err error
+	if db, err = bolt.Open("my.db", 0600, nil); err != nil {
+		log.Fatal(err)
+	}
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			log.WithError(closeErr).Error("Cannot close db connection.")
+		}
+	}()
+	log.Println(db.Info())
 
+	if err = initDb(); err != nil {
+		log.Fatal(err)
+	}
 	e := echo.New()
 	e.GET("/", Index)
 
